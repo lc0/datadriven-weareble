@@ -26,9 +26,15 @@ import android.support.wearable.view.WatchViewStub;
 import android.util.Log;
 import android.widget.TextView;
 
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.wearable.*;
+
+
 import java.util.concurrent.CountDownLatch;
 
-public class MyActivity extends Activity implements SensorEventListener{
+public class MyActivity extends Activity implements SensorEventListener, GoogleApiClient.ConnectionCallbacks,
+        GoogleApiClient.OnConnectionFailedListener{
 
     private static final String TAG = MyActivity.class.getName();
 
@@ -40,10 +46,21 @@ public class MyActivity extends Activity implements SensorEventListener{
     private SensorManager mSensorManager;
     private CountDownLatch latch;
 
+    GoogleApiClient googleClient;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_my);
+        Log.d(TAG, "create it ------------------");
+
+//        // Build a new GoogleApiClient
+        googleClient = new GoogleApiClient.Builder(this)
+                .addApi(Wearable.API)
+                .addConnectionCallbacks(this)
+                .addOnConnectionFailedListener(this)
+                .build();
+
         latch = new CountDownLatch(1);
         final WatchViewStub stub = (WatchViewStub) findViewById(R.id.watch_view_stub);
         stub.setOnLayoutInflatedListener(new WatchViewStub.OnLayoutInflatedListener() {
@@ -67,9 +84,13 @@ public class MyActivity extends Activity implements SensorEventListener{
 
     @Override
     protected void onStart() {
+        Log.d(TAG, "start here it ------------------");
         super.onStart();
 
+        googleClient.connect();
         mSensorManager.registerListener(this, this.mHeartRateSensor, 3);
+
+        //new SendToDataLayerThread("/message_path", "connect", this.googleClient).start();
     }
 
     @Override
@@ -81,6 +102,8 @@ public class MyActivity extends Activity implements SensorEventListener{
                 rate.setText(String.valueOf(sensorEvent.values[0]));
                 accuracy.setText("Accuracy: "+sensorEvent.accuracy);
                 sensorInformation.setText(sensorEvent.sensor.toString());
+
+                //new SendToDataLayerThread("/message_path", "values:" + String.valueOf(sensorEvent.values[0]), this.googleClient).start();
             }
 
         } catch (InterruptedException e) {
@@ -98,6 +121,28 @@ public class MyActivity extends Activity implements SensorEventListener{
     protected void onStop() {
         super.onStop();
 
+        if (null != googleClient && googleClient.isConnected()) {
+            googleClient.disconnect();
+        }
+
         mSensorManager.unregisterListener(this);
+    }
+
+    // Send a message when the data layer connection is successful.
+    @Override
+    public void onConnected(Bundle connectionHint) {
+        Log.d(TAG, "connected ");
+        String message = "Hello wearable\n Via the data layer";
+        //Requires a new thread to avoid blocking the UI
+        new SendToDataLayerThread("/message_path", message, this.googleClient).start();
+    }
+
+    // Placeholders for required connection callbacks
+    @Override
+    public void onConnectionSuspended(int cause) { }
+
+    @Override
+    public void onConnectionFailed(ConnectionResult connectionResult) {
+        Log.d(TAG, "failed here ");
     }
 }
